@@ -1,44 +1,41 @@
-// api/proxy.js
-// Menggunakan format CommonJS agar kompatibel dengan Vercel default
+const https = require('https');
 
-module.exports = async (req, res) => {
-  // 1. Ambil ID dan Key dari URL
-  const { id, key } = req.query;
+module.exports = (req, res) => {
+    // 1. SETUP CORS (Agar tidak diblokir browser)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (!id || !key) {
-    return res.status(400).json({ error: 'Parameter id dan key wajib ada.' });
-  }
-
-  try {
-    // 2. URL Google Drive
-    const driveUrl = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${key}`;
-
-    // 3. Fetch ke Google
-    // Node.js 18+ di Vercel sudah support fetch bawaan
-    const response = await fetch(driveUrl);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Google Error (${response.status}): ${errorText}`);
+    // Handle pre-flight request
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
     }
 
-    // 4. Ambil Buffer
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const { id, key } = req.query;
 
-    // 5. Kirim ke Browser dengan Header CORS
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Penting untuk CORS
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Cache-Control', 's-maxage=86400'); // Cache agar cepat
-    
-    res.status(200).send(buffer);
+    if (!id || !key) {
+        return res.status(400).json({ error: 'ID dan Key wajib diisi' });
+    }
 
-  } catch (error) {
-    console.error("Proxy Error:", error);
-    res.status(500).json({ 
-      error: 'Gagal mengambil file.', 
-      details: error.message 
+    const driveUrl = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${key}`;
+
+    // 2. REQUEST MENGGUNAKAN HTTPS NODE.JS (Lebih Stabil)
+    https.get(driveUrl, (googleRes) => {
+        // Cek jika Google menolak (Misal 403 Forbidden / 404 Not Found)
+        if (googleRes.statusCode !== 200) {
+            return res.status(googleRes.statusCode).json({ 
+                error: `Google Drive Error: ${googleRes.statusCode}`,
+                message: "Pastikan API Key benar dan File/Folder di-set 'Anyone with the link'"
+            });
+        }
+
+        // Set header agar dianggap file binary
+        res.setHeader('Content-Type', 'application/octet-stream');
+        
+        // Pipe (salurkan) data langsung dari Google ke Browser pengguna
+        googleRes.pipe(res);
+        
+    }).on('error', (e) => {
+        res.status(500).json({ error: e.message });
     });
-  }
 };
