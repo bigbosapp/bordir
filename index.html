@@ -125,19 +125,24 @@
             }
         }
 
-        async function previewDst(id, name, apiKey) {
+async function previewDst(id, name, apiKey) {
             document.getElementById('modal').classList.add('active');
             document.getElementById('pTitle').innerText = name;
             canvas.style.display = 'none';
             loading.style.display = 'block';
+            loading.innerText = "⏳ Menghubungi Server Vercel...";
 
             try {
-                // PANGGIL BACKEND VERCEL KITA SENDIRI (/api/proxy)
-                // Ini akan memanggil file 'api/proxy.js' yang kita buat
+                // PANGGIL BACKEND VERCEL
                 const proxyUrl = `/api/proxy?id=${id}&key=${apiKey}`;
                 
                 const res = await fetch(proxyUrl);
-                if(!res.ok) throw new Error("Gagal mengambil file");
+                
+                // Cek jika server Vercel error (Misal 404 atau 500)
+                if(!res.ok) {
+                    const errJson = await res.json().catch(() => ({}));
+                    throw new Error(errJson.details || `Server Error: ${res.status}`);
+                }
                 
                 const blob = await res.blob();
                 const buffer = await blob.arrayBuffer();
@@ -145,33 +150,11 @@
                 renderCanvas(buffer);
 
             } catch(e) {
-                loading.innerText = "Error: " + e.message;
+                loading.style.color = 'red';
+                loading.innerHTML = `❌ Gagal:<br>${e.message}<br><br><small>Pastikan folder 'api/proxy.js' ada di GitHub</small>`;
             }
-        }
-
-        function renderCanvas(buffer) {
-            loading.style.display = 'none';
-            canvas.style.display = 'block';
-            try {
-                const stitches = DstParser.read(new DataView(buffer));
-                const ctx = canvas.getContext('2d');
-                let minX=1/0,maxX=-1/0,minY=1/0,maxY=-1/0,ax=0,ay=0,path=[];
-                stitches.forEach(s=>{ax+=s.x,ay-=s.y,ax<minX&&(minX=ax),ax>maxX&&(maxX=ax),ay<minY&&(minY=ay),ay>maxY&&(maxY=ay),path.push({x:ax,y:ay,j:s.jump,c:s.color})});
-                const w=maxX-minX, h=maxY-minY, sc=Math.min(800/w, 800/h);
-                canvas.width=w*sc+40; canvas.height=h*sc+40;
-                ctx.translate(20,20); ctx.scale(sc,sc); ctx.translate(-minX,-minY);
-                ctx.lineWidth=2/sc; ctx.lineJoin='round'; ctx.strokeStyle='#000';
-                ctx.beginPath();
-                path.forEach((p,i)=>{
-                    if(0===i)ctx.moveTo(p.x,p.y);
-                    else if(p.j||p.c){
-                        ctx.stroke();ctx.beginPath();ctx.moveTo(p.x,p.y);
-                        if(p.c)ctx.strokeStyle=`hsl(${Math.random()*360},80%,40%)`;
-                    }else ctx.lineTo(p.x,p.y);
-                });
-                ctx.stroke();
-            } catch(e) { loading.style.display='block'; loading.innerText="File Rusak"; }
         }
     </script>
 </body>
+
 </html>
