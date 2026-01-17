@@ -137,50 +137,53 @@
             pTitle.innerText = name;
             canvas.style.display = 'none';
             loading.style.display = 'block';
-            loading.innerText = "⏳ Menghubungi Server Vercel...";
+            loading.innerText = "⏳ Menghubungi Server...";
             loading.style.color = "black";
 
             try {
-                // Gunakan path absolut untuk memastikan tidak salah alamat
+                // 1. Panggil URL
                 const proxyUrl = `/api/proxy?id=${id}&key=${apiKey}`;
-                console.log("Fetching URL:", proxyUrl); // Cek Console browser (F12)
-
                 const res = await fetch(proxyUrl);
-                
-                // JIKA ERROR DARI VERCEL/GOOGLE
-                if(!res.ok) {
-                    let errorMessage = `Status: ${res.status}`;
+
+                // 2. CEK STATUS TERLEBIH DAHULU
+                if (!res.ok) {
+                    // Jika Error (404/500), baca SEKALI saja sebagai text
+                    const errorText = await res.text(); 
+                    
+                    // Coba parsing manual siapa tahu JSON
                     try {
-                        const jsonErr = await res.json();
-                        errorMessage = jsonErr.error || jsonErr.message || errorMessage;
-                    } catch(e) {
-                        errorMessage = await res.text();
+                        const jsonErr = JSON.parse(errorText);
+                        throw new Error(jsonErr.error || jsonErr.message || "Server Error");
+                    } catch (parseErr) {
+                        // Kalau bukan JSON, tampilkan text aslinya (misal error HTML dari Vercel)
+                        throw new Error(`Server Error (${res.status}): ${errorText.substring(0, 100)}...`);
                     }
-                    throw new Error(errorMessage);
                 }
-                
+
+                // 3. JIKA SUKSES, BACA SEBAGAI BLOB (SEKALI SAJA)
                 loading.innerText = "🧶 Download selesai. Merender...";
-                
                 const blob = await res.blob();
                 const buffer = await blob.arrayBuffer();
-                
-                if (buffer.byteLength < 100) {
-                    throw new Error("File terlalu kecil. Kemungkinan bukan file DST valid.");
+
+                // Validasi ukuran file (DST jarang di bawah 100 bytes)
+                if (buffer.byteLength < 50) {
+                    throw new Error("File terlalu kecil atau kosong.");
                 }
 
                 renderCanvas(buffer);
 
-            } catch(e) {
+            } catch (e) {
                 console.error(e);
                 loading.innerHTML = `
-                    <div style="color:red; text-align:center;">
+                    <div style="color:red; text-align:center; padding: 20px;">
                         <strong>❌ Gagal Mengambil File</strong><br><br>
-                        <em>"${e.message}"</em><br><br>
-                        <small>
-                        Solusi:<br>
-                        1. Cek folder 'api' di GitHub ada file 'proxy.js'.<br>
-                        2. Cek file 'vercel.json' sudah dibuat.<br>
-                        3. Pastikan Folder Drive di-share "Anyone with the link".
+                        ${e.message}<br><br>
+                        <hr style="margin:10px 0; border:0; border-top:1px solid #ccc;">
+                        <small style="color:#555;">
+                        <strong>Diagnosa:</strong><br>
+                        1. Jika error "404": Cek file <code>vercel.json</code> dan struktur folder.<br>
+                        2. Jika error "500": Cek kode <code>proxy.js</code>.<br>
+                        3. Cek Console Browser (F12) untuk detail merah.
                         </small>
                     </div>`;
             }
@@ -189,4 +192,5 @@
 </body>
 
 </html>
+
 
