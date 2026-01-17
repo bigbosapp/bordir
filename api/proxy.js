@@ -1,41 +1,24 @@
-const https = require('https');
-
-module.exports = (req, res) => {
-    // 1. SETUP CORS (Agar tidak diblokir browser)
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-    // Handle pre-flight request
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-
+// File: api/proxy.js
+module.exports = async (req, res) => {
     const { id, key } = req.query;
 
-    if (!id || !key) {
-        return res.status(400).json({ error: 'ID dan Key wajib diisi' });
-    }
+    if (!id || !key) return res.status(400).send("ID & Key Missing");
 
-    const driveUrl = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${key}`;
+    try {
+        const url = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${key}`;
+        
+        // Gunakan fetch bawaan Node.js (Vercel support Node 18+)
+        const response = await fetch(url);
+        
+        if (!response.ok) throw new Error(await response.text());
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
 
-    // 2. REQUEST MENGGUNAKAN HTTPS NODE.JS (Lebih Stabil)
-    https.get(driveUrl, (googleRes) => {
-        // Cek jika Google menolak (Misal 403 Forbidden / 404 Not Found)
-        if (googleRes.statusCode !== 200) {
-            return res.status(googleRes.statusCode).json({ 
-                error: `Google Drive Error: ${googleRes.statusCode}`,
-                message: "Pastikan API Key benar dan File/Folder di-set 'Anyone with the link'"
-            });
-        }
-
-        // Set header agar dianggap file binary
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/octet-stream');
-        
-        // Pipe (salurkan) data langsung dari Google ke Browser pengguna
-        googleRes.pipe(res);
-        
-    }).on('error', (e) => {
-        res.status(500).json({ error: e.message });
-    });
+        res.status(200).send(buffer);
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
 };
