@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vercel Embroidery Viewer</title>
+    <style>
+        :root { --vercel-black: #000; --vercel-gray: #666; --bg: #fafafa; }
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; height: 100vh; background: var(--bg); overflow: hidden; }
+        
+        .sidebar { width: 300px; background: #fff; padding: 25px; border-right: 1px solid #eaeaea; display: flex; flex-direction: column; z-index: 10; box-shadow: 5px 0 20px rgba(0,0,0,0.03); }
+        .main { flex: 1; padding: 30px; overflow-y: auto; }
+
+        h2 { margin: 0 0 20px 0; font-size: 20px; letter-spacing: -0.5px; }
+        label { font-size: 12px; font-weight: 600; color: var(--vercel-gray); margin-top: 15px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+        input { width: 100%; padding: 10px; margin-top: 8px; border: 1px solid #eaeaea; border-radius: 5px; font-size: 14px; box-sizing: border-box; transition: 0.2s; }
+        input:focus { border-color: #000; outline: none; }
+        
+        .btn { background: #000; color: #fff; border: none; padding: 12px; border-radius: 5px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 25px; transition: 0.2s; }
+        .btn:hover { background: #333; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; }
+        .card { background: #fff; border: 1px solid #eaeaea; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
+        .card:hover { transform: translateY(-4px); box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-color: #000; }
+        .badge { position: absolute; top: 10px; right: 10px; background: #0070f3; color: white; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 20px; }
+        .name { font-size: 13px; margin-top: 15px; color: #444; word-break: break-word; font-weight: 500; }
+
+        /* Modal */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 999; backdrop-filter: blur(5px); }
+        .modal.active { display: flex; }
+        .preview-box { width: 85%; height: 85%; background: #fff; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0,0,0,0.3); }
+        .header { padding: 15px 25px; border-bottom: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; background: #fff; }
+        .canvas-area { flex: 1; background: #f5f5f5; display: flex; justify-content: center; align-items: center; overflow: auto; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; }
+        canvas { box-shadow: 0 5px 20px rgba(0,0,0,0.1); max-width: 95%; max-height: 95%; background: white; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2>Vercel Viewer</h2>
+        <p style="font-size:12px; color:#888; margin-bottom:20px;">ES2025STUDENT</p>
+
+        <label>API Key</label>
+        <input type="password" id="apiKey" placeholder="AIza...">
+
+        <label>Folder ID</label>
+        <input type="text" id="folderId" placeholder="ID...">
+
+        <button class="btn" onclick="saveAndLoad()">Muat Data</button>
+    </div>
+
+    <div class="main">
+        <div id="grid" class="grid">
+            <p style="grid-column:1/-1; text-align:center; color:#888; margin-top:50px;">
+                Siap memuat file DST.
+            </p>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="preview-box">
+            <div class="header">
+                <strong id="pTitle">Preview</strong>
+                <button onclick="document.getElementById('modal').classList.remove('active')" style="background:transparent; border:1px solid #ddd; padding:5px 15px; border-radius:4px; cursor:pointer;">Tutup</button>
+            </div>
+            <div class="canvas-area">
+                <div id="loading" style="font-size:16px; font-weight:600;">⏳ Sedang memproses...</div>
+                <canvas id="dstCanvas" style="display:none"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. ENGINE DST (Embed)
+        const DstParser={read:function(t){const e=[];let a=512;for(;a<t.byteLength;){if(a+2>=t.byteLength)break;const r=t.getUint8(a),n=t.getUint8(a+1),o=t.getUint8(a+2);if(a+=3,0===r&&0===n&&243===o)break;let s=0,i=0,l=!1,c=!1;128&r&&(i+=1),64&r&&(i-=1),32&r&&(i+=9),16&r&&(i-=9),8&r&&(s-=9),4&r&&(s+=9),2&r&&(s-=1),1&r&&(s+=1),128&n&&(i+=3),64&n&&(i-=3),32&n&&(i+=27),16&n&&(i-=27),8&n&&(s-=27),4&n&&(s+=27),2&n&&(s-=3),1&n&&(s+=3),128&o&&(l=!0),64&o&&(c=!0),32&o&&(i+=81),16&o&&(i-=81),8&o&&(s-=81),4&o&&(s+=81),2&o&&(s-=81),1&o&&(s+=81),e.push({x:s,y:i,jump:l,color:c})}return e}};
+
+        // 2. LOGIC
+        const grid = document.getElementById('grid');
+        const canvas = document.getElementById('dstCanvas');
+        const loading = document.getElementById('loading');
+        
+        // Auto Load Config
+        window.onload = () => {
+            document.getElementById('apiKey').value = localStorage.getItem('v_key') || '';
+            document.getElementById('folderId').value = localStorage.getItem('v_folder') || '';
+        }
+
+        async function saveAndLoad() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            let folderId = document.getElementById('folderId').value.trim();
+            if(folderId.includes('folders/')) folderId = folderId.split('folders/')[1];
+            if(folderId.includes('?')) folderId = folderId.split('?')[0];
+
+            if(!apiKey || !folderId) return alert("Isi data dulu!");
+
+            localStorage.setItem('v_key', apiKey);
+            localStorage.setItem('v_folder', folderId);
+
+            loadList(apiKey, folderId);
+        }
+
+        async function loadList(apiKey, folderId) {
+            grid.innerHTML = '<p style="text-align:center">Loading List...</p>';
+            try {
+                // List file langsung dari Browser ke Google (Aman untuk Metadata)
+                const q = `'${folderId}' in parents and trashed=false`;
+                const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&key=${apiKey}&fields=files(id,name,fileExtension)`;
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if(data.error) throw new Error(data.error.message);
+
+                grid.innerHTML = '';
+                data.files.forEach(file => {
+                    const isDst = (file.fileExtension||'').toLowerCase() === 'dst';
+                    const div = document.createElement('div');
+                    div.className = 'card';
+                    div.innerHTML = `${isDst?'<span class="badge">DST</span>':''} <div style="font-size:30px">${isDst?'🧵':'📄'}</div> <div class="name">${file.name}</div>`;
+                    div.onclick = () => isDst ? previewDst(file.id, file.name, apiKey) : alert('Hanya DST');
+                    grid.appendChild(div);
+                });
+            } catch(e) {
+                grid.innerHTML = `<p style="color:red">Error: ${e.message}</p>`;
+            }
+        }
+
+        async function previewDst(id, name, apiKey) {
+            document.getElementById('modal').classList.add('active');
+            document.getElementById('pTitle').innerText = name;
+            canvas.style.display = 'none';
+            loading.style.display = 'block';
+
+            try {
+                // PANGGIL BACKEND VERCEL KITA SENDIRI (/api/proxy)
+                // Ini akan memanggil file 'api/proxy.js' yang kita buat
+                const proxyUrl = `/api/proxy?id=${id}&key=${apiKey}`;
+                
+                const res = await fetch(proxyUrl);
+                if(!res.ok) throw new Error("Gagal mengambil file");
+                
+                const blob = await res.blob();
+                const buffer = await blob.arrayBuffer();
+                
+                renderCanvas(buffer);
+
+            } catch(e) {
+                loading.innerText = "Error: " + e.message;
+            }
+        }
+
+        function renderCanvas(buffer) {
+            loading.style.display = 'none';
+            canvas.style.display = 'block';
+            try {
+                const stitches = DstParser.read(new DataView(buffer));
+                const ctx = canvas.getContext('2d');
+                let minX=1/0,maxX=-1/0,minY=1/0,maxY=-1/0,ax=0,ay=0,path=[];
+                stitches.forEach(s=>{ax+=s.x,ay-=s.y,ax<minX&&(minX=ax),ax>maxX&&(maxX=ax),ay<minY&&(minY=ay),ay>maxY&&(maxY=ay),path.push({x:ax,y:ay,j:s.jump,c:s.color})});
+                const w=maxX-minX, h=maxY-minY, sc=Math.min(800/w, 800/h);
+                canvas.width=w*sc+40; canvas.height=h*sc+40;
+                ctx.translate(20,20); ctx.scale(sc,sc); ctx.translate(-minX,-minY);
+                ctx.lineWidth=2/sc; ctx.lineJoin='round'; ctx.strokeStyle='#000';
+                ctx.beginPath();
+                path.forEach((p,i)=>{
+                    if(0===i)ctx.moveTo(p.x,p.y);
+                    else if(p.j||p.c){
+                        ctx.stroke();ctx.beginPath();ctx.moveTo(p.x,p.y);
+                        if(p.c)ctx.strokeStyle=`hsl(${Math.random()*360},80%,40%)`;
+                    }else ctx.lineTo(p.x,p.y);
+                });
+                ctx.stroke();
+            } catch(e) { loading.style.display='block'; loading.innerText="File Rusak"; }
+        }
+    </script>
+</body>
+</html>
