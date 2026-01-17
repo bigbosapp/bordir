@@ -125,36 +125,68 @@
             }
         }
 
-async function previewDst(id, name, apiKey) {
-            document.getElementById('modal').classList.add('active');
-            document.getElementById('pTitle').innerText = name;
+// ... kode DstParser tetap sama ...
+
+        async function previewDst(id, name, apiKey) {
+            const modal = document.getElementById('modal');
+            const pTitle = document.getElementById('pTitle');
+            const canvas = document.getElementById('dstCanvas');
+            const loading = document.getElementById('loading');
+
+            modal.classList.add('active');
+            pTitle.innerText = name;
             canvas.style.display = 'none';
             loading.style.display = 'block';
             loading.innerText = "⏳ Menghubungi Server Vercel...";
+            loading.style.color = "black";
 
             try {
-                // PANGGIL BACKEND VERCEL
+                // Gunakan path absolut untuk memastikan tidak salah alamat
                 const proxyUrl = `/api/proxy?id=${id}&key=${apiKey}`;
-                
+                console.log("Fetching URL:", proxyUrl); // Cek Console browser (F12)
+
                 const res = await fetch(proxyUrl);
                 
-                // Cek jika server Vercel error (Misal 404 atau 500)
+                // JIKA ERROR DARI VERCEL/GOOGLE
                 if(!res.ok) {
-                    const errJson = await res.json().catch(() => ({}));
-                    throw new Error(errJson.details || `Server Error: ${res.status}`);
+                    let errorMessage = `Status: ${res.status}`;
+                    try {
+                        const jsonErr = await res.json();
+                        errorMessage = jsonErr.error || jsonErr.message || errorMessage;
+                    } catch(e) {
+                        errorMessage = await res.text();
+                    }
+                    throw new Error(errorMessage);
                 }
+                
+                loading.innerText = "🧶 Download selesai. Merender...";
                 
                 const blob = await res.blob();
                 const buffer = await blob.arrayBuffer();
                 
+                if (buffer.byteLength < 100) {
+                    throw new Error("File terlalu kecil. Kemungkinan bukan file DST valid.");
+                }
+
                 renderCanvas(buffer);
 
             } catch(e) {
-                loading.style.color = 'red';
-                loading.innerHTML = `❌ Gagal:<br>${e.message}<br><br><small>Pastikan folder 'api/proxy.js' ada di GitHub</small>`;
+                console.error(e);
+                loading.innerHTML = `
+                    <div style="color:red; text-align:center;">
+                        <strong>❌ Gagal Mengambil File</strong><br><br>
+                        <em>"${e.message}"</em><br><br>
+                        <small>
+                        Solusi:<br>
+                        1. Cek folder 'api' di GitHub ada file 'proxy.js'.<br>
+                        2. Cek file 'vercel.json' sudah dibuat.<br>
+                        3. Pastikan Folder Drive di-share "Anyone with the link".
+                        </small>
+                    </div>`;
             }
         }
     </script>
 </body>
 
 </html>
+
