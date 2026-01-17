@@ -1,35 +1,44 @@
-// Vercel Serverless Function (Node.js)
-// Ini berjalan di server Vercel untuk mengambil file dari Google Drive
-// agar tidak diblokir browser (Bypass CORS).
+// api/proxy.js
+// Menggunakan format CommonJS agar kompatibel dengan Vercel default
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
+  // 1. Ambil ID dan Key dari URL
   const { id, key } = req.query;
 
   if (!id || !key) {
-    return res.status(400).json({ error: 'Missing id or key parameters' });
+    return res.status(400).json({ error: 'Parameter id dan key wajib ada.' });
   }
 
   try {
-    // 1. URL Download Google Drive
+    // 2. URL Google Drive
     const driveUrl = `https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${key}`;
 
-    // 2. Fetch file dari Google
+    // 3. Fetch ke Google
+    // Node.js 18+ di Vercel sudah support fetch bawaan
     const response = await fetch(driveUrl);
 
     if (!response.ok) {
-      throw new Error(`Google Drive Error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Google Error (${response.status}): ${errorText}`);
     }
 
-    // 3. Ambil data biner
+    // 4. Ambil Buffer
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 4. Kirim balik ke browser dengan Header yang benar
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Ijinkan akses dari mana saja
+    // 5. Kirim ke Browser dengan Header CORS
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Penting untuk CORS
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Content-Type', 'application/octet-stream');
-    res.send(buffer);
+    res.setHeader('Cache-Control', 's-maxage=86400'); // Cache agar cepat
+    
+    res.status(200).send(buffer);
 
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Proxy Error:", error);
+    res.status(500).json({ 
+      error: 'Gagal mengambil file.', 
+      details: error.message 
+    });
   }
-}
+};
